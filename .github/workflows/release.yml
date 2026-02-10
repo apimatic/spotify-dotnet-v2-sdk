@@ -1,0 +1,51 @@
+name: Release to NuGet
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  release:
+    name: Create tag, pack, and publish
+    runs-on: ubuntu-22.04
+    environment: Production
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Generate tag and changelog
+        id: tag_version
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          tag_prefix: ""
+
+      - name: Set package version
+        run: echo "PKG_VERSION=${{ steps.tag_version.outputs.new_tag }}" >> $GITHUB_ENV
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release
+
+      - name: Pack NuGet package
+        run: dotnet pack SpotifyWebApi.csproj -c Release -p:PackageId=sdksio.SpotifyWebApi -p:PackageVersion=${{ env.PKG_VERSION }}
+
+      - name: Push package to NuGet
+        run: dotnet nuget push ./bin/Release/sdksio.SpotifyWebApi.${{ env.PKG_VERSION }}.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json
+
+      - name: Create GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ steps.tag_version.outputs.new_tag }}
+          name: Release ${{ steps.tag_version.outputs.new_tag }}
+          body: ${{ steps.tag_version.outputs.changelog }}
